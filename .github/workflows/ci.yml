@@ -25,3 +25,43 @@ jobs:
         run: chmod +x mvnw && ./mvnw clean package -DskipTests
 
       - name: Build Docker image
+        run: docker build -t gameflix-app:latest .
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: gameflix-app:latest
+          format: cyclonedx-json
+          output-file: gameflix-sbom.cdx.json
+          upload-artifact: false
+
+      - name: Generate HIGH and CRITICAL vulnerability report
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: gameflix-app:latest
+          format: json
+          output: trivy-results.json
+          severity: HIGH,CRITICAL
+          scanners: vuln
+          exit-code: '0'
+
+      - name: Fail build on CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: gameflix-app:latest
+          format: table
+          severity: CRITICAL
+          scanners: vuln
+          exit-code: '1'
+          skip-setup-trivy: true
+
+      - name: Upload SBOM and vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gameflix-security-reports
+          path: |
+            gameflix-sbom.cdx.json
+            trivy-results.json
+          if-no-files-found: warn
+          retention-days: 30
